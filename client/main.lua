@@ -1,4 +1,16 @@
-ESX = nil
+local Keys = {
+	["ESC"] = 322, ["F1"] = 288, ["F2"] = 289, ["F3"] = 170, ["F5"] = 166, ["F6"] = 167, ["F7"] = 168, ["F8"] = 169, ["F9"] = 56, ["F10"] = 57,
+	["~"] = 243, ["1"] = 157, ["2"] = 158, ["3"] = 160, ["4"] = 164, ["5"] = 165, ["6"] = 159, ["7"] = 161, ["8"] = 162, ["9"] = 163, ["-"] = 84, ["="] = 83, ["BACKSPACE"] = 177,
+	["TAB"] = 37, ["Q"] = 44, ["W"] = 32, ["E"] = 38, ["R"] = 45, ["T"] = 245, ["Y"] = 246, ["U"] = 303, ["P"] = 199, ["["] = 39, ["]"] = 40, ["ENTER"] = 18,
+	["CAPS"] = 137, ["A"] = 34, ["S"] = 8, ["D"] = 9, ["F"] = 23, ["G"] = 47, ["H"] = 74, ["K"] = 311, ["L"] = 182,
+	["LEFTSHIFT"] = 21, ["Z"] = 20, ["X"] = 73, ["C"] = 26, ["V"] = 0, ["B"] = 29, ["N"] = 249, ["M"] = 244, [","] = 82, ["."] = 81,
+	["LEFTCTRL"] = 36, ["LEFTALT"] = 19, ["SPACE"] = 22, ["RIGHTCTRL"] = 70,
+	["HOME"] = 213, ["PAGEUP"] = 10, ["PAGEDOWN"] = 11, ["DELETE"] = 178,
+	["LEFT"] = 174, ["RIGHT"] = 175, ["TOP"] = 27, ["DOWN"] = 173,
+	["NENTER"] = 201, ["N4"] = 108, ["N5"] = 60, ["N6"] = 107, ["N+"] = 96, ["N-"] = 97, ["N7"] = 117, ["N8"] = 61, ["N9"] = 118
+}
+
+ESX					= nil
 
 Citizen.CreateThread(function()
 	while ESX == nil do
@@ -6,118 +18,95 @@ Citizen.CreateThread(function()
 		Citizen.Wait(0)
 	end
 
-	while not ESX.GetPlayerData().job do
+	while ESX.GetPlayerData().job == nil do
 		Citizen.Wait(10)
 	end
 
 	ESX.PlayerData = ESX.GetPlayerData()
 
 	-- Update the door list
-	ESX.TriggerServerCallback('esx_doorlock:getDoorState', function(doorState)
-		for index,state in pairs(doorState) do
-			Config.DoorList[index].locked = state
+	ESX.TriggerServerCallback('esx_gatelock:getDoorInfo', function(doorInfo, count)
+		for localID = 1, count, 1 do
+			if doorInfo[localID] ~= nil then
+				Config.DoorList[doorInfo[localID].doorID].locked = doorInfo[localID].state
+			end
 		end
 	end)
 end)
 
 RegisterNetEvent('esx:setJob')
-AddEventHandler('esx:setJob', function(job) ESX.PlayerData.job = job end)
-
-RegisterNetEvent('esx_doorlock:setDoorState')
-AddEventHandler('esx_doorlock:setDoorState', function(index, state) Config.DoorList[index].locked = state end)
+AddEventHandler('esx:setJob', function(job)
+	ESX.PlayerData.job = job
+end)
 
 Citizen.CreateThread(function()
 	while true do
+		Citizen.Wait(10)
 		local playerCoords = GetEntityCoords(PlayerPedId())
 
-		for k,v in ipairs(Config.DoorList) do
-			v.isAuthorized = isAuthorized(v)
+		for i=1, #Config.DoorList do
+			local doorID   = Config.DoorList[i]
+			local distance = GetDistanceBetweenCoords(playerCoords, doorID.objCoords.x, doorID.objCoords.y, doorID.objCoords.z, true)
+			local isAuthorized = IsAuthorized(doorID)
 
-			if v.doors then
-				for k2,v2 in ipairs(v.doors) do
-					if v2.object and DoesEntityExist(v2.object) then
-						if k2 == 1 then
-							v.distanceToPlayer = #(playerCoords - GetEntityCoords(v2.object))
-						end
-
-						if v.locked and v2.objHeading and ESX.Math.Round(GetEntityHeading(v2.object)) ~= v2.objHeading then
-							SetEntityHeading(v2.object, v2.objHeading)
-						end
-					else
-						v.distanceToPlayer = nil
-						v2.object = GetClosestObjectOfType(v2.objCoords, 1.0, v2.objHash, false, false, false)
-					end
-				end
-			else
-				if v.object and DoesEntityExist(v.object) then
-					v.distanceToPlayer = #(playerCoords - GetEntityCoords(v.object))
-
-					if v.locked and v.objHeading and ESX.Math.Round(GetEntityHeading(v.object)) ~= v.objHeading then
-						SetEntityHeading(v.object, v.objHeading)
-					end
-				else
-					v.distanceToPlayer = nil
-					v.object = GetClosestObjectOfType(v.objCoords, 1.0, v.objHash, false, false, false)
-				end
-			end
-		end
-
-		Citizen.Wait(500)
-	end
-end)
-
-Citizen.CreateThread(function()
-	while true do
-		Citizen.Wait(0)
-		local letSleep = true
-
-		for k,v in ipairs(Config.DoorList) do
-			if v.distanceToPlayer and v.distanceToPlayer < 50 then
-				letSleep = false
-
-				if v.doors then
-					for k2,v2 in ipairs(v.doors) do
-						FreezeEntityPosition(v2.object, v.locked)
-					end
-				else
-					FreezeEntityPosition(v.object, v.locked)
-				end
+			local maxDistance = 1.25
+			if doorID.distance then
+				maxDistance = doorID.distance
 			end
 
-			if v.distanceToPlayer and v.distanceToPlayer < v.maxDistance then
-				local size, displayText = 1, _U('unlocked')
+			if distance < maxDistance then
+				ApplyDoorState(doorID)
 
-				if v.size then size = v.size end
-				if v.locked then displayText = _U('locked') end
-				if v.isAuthorized then displayText = _U('press_button', displayText) end
+				local size = 1
+				if doorID.size then
+					size = doorID.size
+				end
 
-				ESX.Game.Utils.DrawText3D(v.textCoords, displayText, size)
+				local displayText = _U('unlocked')
+				if doorID.locked then
+					displayText = _U('locked')
+				end
 
-				if IsControlJustReleased(0, 38) then
-					if v.isAuthorized then
-						v.locked = not v.locked
-						TriggerServerEvent('esx_doorlock:updateState', k, v.locked) -- broadcast new state of the door to everyone
+				if isAuthorized then
+					displayText = _U('press_button', displayText)
+				end
+
+				ESX.Game.Utils.DrawText3D(doorID.textCoords, displayText, size)
+				
+				if IsControlJustReleased(0, Keys['E']) then
+					if isAuthorized then
+						doorID.locked = not doorID.locked
+						ApplyDoorState(doorID)
+
+						TriggerServerEvent('esx_gatelock:updateState', i, doorID.locked) -- Broadcast new state of the door to everyone
 					end
 				end
 			end
-		end
-
-		if letSleep then
-			Citizen.Wait(500)
 		end
 	end
 end)
 
-function isAuthorized(door)
-	if not ESX or not ESX.PlayerData.job then
+function ApplyDoorState(doorID)
+	local closeDoor = GetClosestObjectOfType(doorID.objCoords.x, doorID.objCoords.y, doorID.objCoords.z, 1.0, GetHashKey(doorID.objName), false, false, false)
+	FreezeEntityPosition(closeDoor, doorID.locked)
+end
+
+function IsAuthorized(doorID)
+	if ESX.PlayerData.job == nil then
 		return false
 	end
 
-	for k,job in pairs(door.authorizedJobs) do
-		if job == ESX.PlayerData.job.name then
+	for i=1, #doorID.authorizedJobs, 1 do
+		if doorID.authorizedJobs[i] == ESX.PlayerData.job.name then
 			return true
 		end
 	end
 
 	return false
 end
+
+-- Set state for a door
+RegisterNetEvent('esx_gatelock:setState')
+AddEventHandler('esx_gatelock:setState', function(doorID, state)
+	Config.DoorList[doorID].locked = state
+end)

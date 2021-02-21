@@ -1,25 +1,39 @@
-ESX = nil
-local doorState = {}
+ESX				= nil
+local DoorInfo	= {}
 
 TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)
 
-RegisterServerEvent('esx_doorlock:updateState')
-AddEventHandler('esx_doorlock:updateState', function(doorIndex, state)
+RegisterServerEvent('esx_gatelock:updateState')
+AddEventHandler('esx_gatelock:updateState', function(doorID, state)
 	local xPlayer = ESX.GetPlayerFromId(source)
 
-	if xPlayer and type(doorIndex) == 'number' and type(state) == 'boolean' and Config.DoorList[doorIndex] and isAuthorized(xPlayer.job.name, Config.DoorList[doorIndex]) then
-		doorState[doorIndex] = state
-		TriggerClientEvent('esx_doorlock:setDoorState', -1, doorIndex, state)
+	if type(doorID) ~= 'number' then
+		print(('esx_gatelock: %s didn\'t send a number!'):format(xPlayer.identifier))
+		return
 	end
+
+	if not IsAuthorized(xPlayer.job.name, Config.DoorList[doorID]) then
+		print(('esx_gatelock: %s attempted to open a locked door!'):format(xPlayer.identifier))
+		return
+	end
+
+	-- make each door a table, and clean it when toggled
+	DoorInfo[doorID] = {}
+
+	-- assign information
+	DoorInfo[doorID].state = state
+	DoorInfo[doorID].doorID = doorID
+
+	TriggerClientEvent('esx_gatelock:setState', -1, doorID, state)
 end)
 
-ESX.RegisterServerCallback('esx_doorlock:getDoorState', function(source, cb)
-	cb(doorState)
+ESX.RegisterServerCallback('esx_gatelock:getDoorInfo', function(source, cb)
+	cb(DoorInfo, #DoorInfo)
 end)
 
-function isAuthorized(jobName, doorObject)
-	for k,job in pairs(doorObject.authorizedJobs) do
-		if job == jobName then
+function IsAuthorized(jobName, doorID)
+	for i=1, #doorID.authorizedJobs, 1 do
+		if doorID.authorizedJobs[i] == jobName then
 			return true
 		end
 	end

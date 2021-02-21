@@ -9,7 +9,7 @@ This script was originally developed by Darklandz, later modified by Miss_Behavi
 
 ## Download & Installation
 
-- Download https://github.com/Virrefirre/esx_gatelock
+- Download https://github.com/Virrefirre/esx_gatelock/archive/master.zip
 - Put it in the `[esx]` directory
 
 ## Installation
